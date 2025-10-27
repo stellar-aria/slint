@@ -30,7 +30,7 @@ jobs:
             - name: Build
               run: uv build
               working-directory: api/python/compiler
-            - uses: actions/upload-artifact@v4
+            - uses: actions/upload-artifact@v5
               with:
                 name: python-package-distributions
                 path: api/python/compiler/dist/*
@@ -55,7 +55,7 @@ jobs:
           - name: Build
             run: uv build
             working-directory: api/python/compiler
-          - uses: actions/upload-artifact@v4
+          - uses: actions/upload-artifact@v5
             with:
               name: python-package-distributions
               path: api/python/compiler/dist/*
