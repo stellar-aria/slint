@@ -59,9 +59,7 @@ mod image;
 pub use self::image::*;
 mod drag_n_drop;
 pub use drag_n_drop::*;
-#[cfg(feature = "std")]
 mod path;
-#[cfg(feature = "std")]
 pub use path::*;
 
 /// Alias for `&mut dyn ItemRenderer`. Required so cbindgen generates the ItemVTable
