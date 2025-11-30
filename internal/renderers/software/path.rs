@@ -12,7 +12,7 @@ use zeno::{Fill, Mask, Stroke};
 pub use zeno::Command;
 
 /// Convert Slint's PathDataIterator to zeno's Command format
-#[cfg(feature = "std")]
+#[cfg(feature = "path")]
 pub fn convert_path_data_to_zeno(
     path_data: i_slint_core::graphics::PathDataIterator,
     rotation: crate::RotationInfo,
@@ -59,6 +59,7 @@ pub fn convert_path_data_to_zeno(
 }
 
 /// Common rendering logic for both filled and stroked paths
+#[cfg(feature = "path")]
 fn render_path_with_style<T: TargetPixel>(
     commands: &[Command],
     path_geometry: &PhysicalRect,
@@ -140,6 +141,7 @@ fn render_path_with_style<T: TargetPixel>(
 /// * `clip_geometry` - The clipped region where the path should be rendered (intersection of path and clip)
 /// * `color` - The color to render the path
 /// * `buffer` - The target pixel buffer
+#[cfg(feature = "path")]
 pub fn render_filled_path<T: TargetPixel>(
     commands: &[Command],
     path_geometry: &PhysicalRect,
