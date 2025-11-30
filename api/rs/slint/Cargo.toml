@@ -150,12 +150,15 @@ renderer-winit-femtovg = ["renderer-femtovg"]
 renderer-winit-skia = ["renderer-skia"]
 renderer-winit-skia-opengl = ["renderer-skia-opengl"]
 renderer-winit-skia-vulkan = ["renderer-skia-vulkan"]
+renderer-winit-vello = ["renderer-vello"]
 renderer-winit-software = ["renderer-software"]
 
 ## Render using the [FemtoVG](https://crates.io/crates/femtovg) crate.
 renderer-femtovg = ["i-slint-backend-selector/renderer-femtovg", "dep:i-slint-renderer-femtovg", "std"]
 ## Render using the [FemtoVG](https://crates.io/crates/femtovg) crate and [WGPU](https://crates.io/crates/wgpu).
 renderer-femtovg-wgpu = ["i-slint-backend-selector/renderer-femtovg-wgpu", "dep:i-slint-renderer-femtovg", "std"]
+## Render using the [Vello](https://github.com/linebender/vello) crate.
+renderer-vello = ["i-slint-backend-selector/renderer-vello", "dep:i-slint-renderer-vello", "std", "unstable-wgpu-26"]
 
 ## Render using [Skia](https://skia.org/).
 renderer-skia = ["i-slint-backend-selector/renderer-skia", "std"]
@@ -281,6 +284,7 @@ wgpu-26 = { workspace = true, optional = true }
 wgpu-27 = { workspace = true, optional = true }
 
 i-slint-backend-winit = { workspace = true, optional = true }
+i-slint-renderer-vello = { workspace = true, optional = true }
 
 [target.'cfg(not(target_os = "android"))'.dependencies]
 # FemtoVG is disabled on android because it doesn't compile without setting RUST_FONTCONFIG_DLOPEN=on

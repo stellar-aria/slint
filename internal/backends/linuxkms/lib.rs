@@ -35,6 +35,9 @@ mod renderer {
     #[cfg(feature = "renderer-software")]
     pub mod sw;
 
+    #[cfg(feature = "renderer-vello")]
+    pub mod vello;
+
     pub fn try_skia_then_femtovg_then_software(
         _device_opener: &crate::DeviceOpener,
     ) -> Result<Box<dyn FullscreenRenderer>, PlatformError> {
@@ -48,6 +51,8 @@ mod renderer {
                 "Skia",
                 skia::SkiaRendererAdapter::new_try_vulkan_then_opengl_then_software as FactoryFn,
             ),
+            #[cfg(feature = "renderer-vello")]
+            ("Vello", vello::VelloRendererAdapter::new as FactoryFn),
             #[cfg(feature = "renderer-femtovg")]
             ("FemtoVG", femtovg::FemtoVGRendererAdapter::new as FactoryFn),
             #[cfg(feature = "renderer-software")]

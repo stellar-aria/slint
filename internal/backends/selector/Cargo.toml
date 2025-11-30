@@ -27,6 +27,7 @@ backend-testing = ["i-slint-backend-testing/internal"]
 
 renderer-femtovg = ["i-slint-backend-winit?/renderer-femtovg", "i-slint-backend-linuxkms?/renderer-femtovg"]
 renderer-femtovg-wgpu = ["i-slint-backend-winit?/renderer-femtovg-wgpu"]
+renderer-vello = ["i-slint-backend-winit?/renderer-vello", "i-slint-backend-linuxkms?/renderer-vello"]
 renderer-skia = ["i-slint-backend-winit?/renderer-skia", "i-slint-backend-linuxkms?/renderer-skia"]
 renderer-skia-opengl = [
   "i-slint-backend-winit?/renderer-skia-opengl",

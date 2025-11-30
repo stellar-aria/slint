@@ -330,9 +330,9 @@ pub fn init_instance_adapter_device_queue_surface(
                     .request_device(&wgpu::DeviceDescriptor {
                         label: None,
                         required_features: wgpu::Features::empty(),
-                        // Make sure we use the texture resolution limits from the adapter, so we can support images the size of the swapchain.
-                        required_limits: wgpu::Limits::downlevel_webgl2_defaults()
-                            .using_resolution(adapter.limits()),
+                        // Use the adapter's actual limits to support compute-based renderers like Vello.
+                        // Vello needs at least 7 storage buffers per shader stage for compute shaders.
+                        required_limits: adapter.limits(),
                         memory_hints: wgpu::MemoryHints::MemoryUsage,
                         trace: wgpu::Trace::default(),
                     })

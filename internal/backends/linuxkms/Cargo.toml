@@ -19,6 +19,7 @@ path = "lib.rs"
 renderer-skia = ["renderer-skia-opengl"]
 renderer-skia-vulkan = ["i-slint-renderer-skia/vulkan", "vulkano", "drm", "dep:memmap2"]
 renderer-skia-opengl = ["i-slint-renderer-skia/opengl", "drm", "gbm", "glutin", "raw-window-handle", "dep:memmap2"]
+renderer-vello = ["i-slint-renderer-vello", "i-slint-core/unstable-wgpu-26", "drm", "gbm", "raw-window-handle"]
 renderer-femtovg = ["i-slint-renderer-femtovg/opengl", "drm", "gbm", "glutin", "raw-window-handle"]
 renderer-software = ["i-slint-renderer-software/std", "drm", "dep:bytemuck", "dep:memmap2"]
 libseat = ["dep:libseat"]
@@ -29,6 +30,7 @@ default = []
 i-slint-core = { workspace = true, features = ["default", "image-decoders", "svg"] }
 i-slint-common = { workspace = true, features = ["default"] }
 i-slint-renderer-skia = { workspace = true, features = ["default", "kms"], optional = true }
+i-slint-renderer-vello = { workspace = true, optional = true }
 i-slint-renderer-femtovg = { workspace = true, features = ["default"], optional = true }
 i-slint-renderer-software = { workspace = true, optional = true }
 

@@ -89,6 +89,9 @@ mod renderer {
     #[cfg(enable_skia_renderer)]
     pub(crate) mod skia;
 
+    #[cfg(feature = "renderer-vello")]
+    pub(crate) mod vello;
+
     #[cfg(feature = "renderer-software")]
     pub(crate) mod sw;
 }
@@ -108,10 +111,12 @@ cfg_if::cfg_if! {
         const DEFAULT_RENDERER_NAME: &str = "FemtoVG";
     } else if #[cfg(enable_skia_renderer)] {
         const DEFAULT_RENDERER_NAME: &'static str = "Skia";
+    } else if #[cfg(feature = "renderer-vello")] {
+        const DEFAULT_RENDERER_NAME: &'static str = "Vello";
     } else if #[cfg(feature = "renderer-software")] {
         const DEFAULT_RENDERER_NAME: &'static str = "Software";
     } else {
-        compile_error!("Please select a feature to build with the winit backend: `renderer-femtovg`, `renderer-skia`, `renderer-skia-opengl`, `renderer-skia-vulkan` or `renderer-software`");
+        compile_error!("Please select a feature to build with the winit backend: `renderer-femtovg`, `renderer-skia`, `renderer-skia-opengl`, `renderer-skia-vulkan`, `renderer-vello`, or `renderer-software`");
     }
 }
 
@@ -125,10 +130,12 @@ fn default_renderer_factory(
             renderer::femtovg::WGPUFemtoVGRenderer::new_suspended(shared_backend_data)
         } else if #[cfg(all(feature = "renderer-femtovg", supports_opengl))] {
             renderer::femtovg::GlutinFemtoVGRenderer::new_suspended(shared_backend_data)
+        } else if #[cfg(feature = "renderer-vello")] {
+            renderer::vello::WGPUVelloRenderer::new_suspended(shared_backend_data)
         } else if #[cfg(feature = "renderer-software")] {
             renderer::sw::WinitSoftwareRenderer::new_suspended(shared_backend_data)
         } else {
-            compile_error!("Please select a feature to build with the winit backend: `renderer-femtovg`, `renderer-skia`, `renderer-skia-opengl`, `renderer-skia-vulkan` or `renderer-software`");
+            compile_error!("Please select a feature to build with the winit backend: `renderer-femtovg`, `renderer-skia`, `renderer-skia-opengl`, `renderer-skia-vulkan`, `renderer-vello`, or `renderer-software`");
         }
     }
 }
@@ -154,6 +161,8 @@ fn try_create_window_with_fallback_renderer(
             not(feature = "renderer-femtovg-wgpu")
         ))]
         renderer::femtovg::GlutinFemtoVGRenderer::new_suspended,
+        #[cfg(feature = "renderer-vello")]
+        renderer::vello::WGPUVelloRenderer::new_suspended,
         #[cfg(feature = "renderer-software")]
         renderer::sw::WinitSoftwareRenderer::new_suspended,
     ]
@@ -467,6 +476,17 @@ impl BackendBuilder {
             #[cfg(feature = "renderer-software")]
             (Some("sw"), None) | (Some("software"), None) => {
                 renderer::sw::WinitSoftwareRenderer::new_suspended
+            }
+            #[cfg(feature = "renderer-vello")]
+            (Some("vello"), maybe_graphics_api) => {
+                // Vello 0.6.0 requires WGPU 26
+                if let Some(api) = maybe_graphics_api {
+                    #[cfg(feature = "unstable-wgpu-26")]
+                    if !matches!(api, RequestedGraphicsAPI::WGPU26(..)) {
+                        return Err("Vello renderer requires WGPU 26 graphics API".into());
+                    }
+                }
+                renderer::vello::WGPUVelloRenderer::new_suspended
             }
             (None, None) => default_renderer_factory,
             (Some(renderer_name), _) => {
