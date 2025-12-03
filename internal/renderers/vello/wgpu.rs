@@ -9,7 +9,7 @@ use std::num::NonZeroU32;
 use i_slint_core::api::PhysicalSize as PhysicalWindowSize;
 use i_slint_core::graphics::RequestedGraphicsAPI;
 
-use wgpu_26 as wgpu;
+use wgpu_27 as wgpu;
 
 /// WGPU backend for Vello rendering
 pub struct WgpuBackend {
@@ -91,26 +91,38 @@ impl WgpuBackend {
         size: PhysicalWindowSize,
         requested_graphics_api: Option<RequestedGraphicsAPI>,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-        let (instance, adapter, device, queue, surface) =
-            i_slint_core::graphics::wgpu_26::init_instance_adapter_device_queue_surface(
+        let (instance, adapter, device, queue, surface): (
+            wgpu::Instance,
+            wgpu::Adapter,
+            wgpu::Device,
+            wgpu::Queue,
+            wgpu::Surface<'static>,
+        ) = i_slint_core::graphics::wgpu_27::init_instance_adapter_device_queue_surface(
                 window_handle,
                 requested_graphics_api,
                 wgpu::Backends::empty(),  // Don't avoid any backends
             )?;
 
-        let mut surface_config =
-            surface.get_default_config(&adapter, size.width, size.height).unwrap();
-
         let swapchain_capabilities = surface.get_capabilities(&adapter);
         // Prefer RGBA8 or BGRA8 for blitting compatibility
-        let swapchain_format = swapchain_capabilities
+        let swapchain_format: wgpu::TextureFormat = swapchain_capabilities
             .formats
             .iter()
-            .find(|f| matches!(f, wgpu::TextureFormat::Rgba8Unorm | wgpu::TextureFormat::Bgra8Unorm))
-            .or_else(|| swapchain_capabilities.formats.iter().find(|f| !f.is_srgb()))
             .copied()
+            .find(|f| matches!(f, wgpu::TextureFormat::Rgba8Unorm | wgpu::TextureFormat::Bgra8Unorm))
+            .or_else(|| swapchain_capabilities.formats.iter().copied().find(|f: &wgpu::TextureFormat| !f.is_srgb()))
             .unwrap_or_else(|| swapchain_capabilities.formats[0]);
-        surface_config.format = swapchain_format;
+        
+        let mut surface_config = wgpu::SurfaceConfiguration {
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+            format: swapchain_format,
+            width: size.width,
+            height: size.height,
+            present_mode: wgpu::PresentMode::AutoVsync,
+            alpha_mode: swapchain_capabilities.alpha_modes[0],
+            view_formats: vec![],
+            desired_maximum_frame_latency: 2,
+        };
         
         // Surface needs RENDER_ATTACHMENT for blitting
         surface_config.usage = wgpu::TextureUsages::RENDER_ATTACHMENT;
@@ -159,7 +171,7 @@ impl crate::GraphicsBackend for WgpuBackend {
         Self::new()
     }
 
-    fn read_wgpu_26_texture(&self, _texture: &wgpu::Texture) -> Option<(u32, u32, Vec<u8>)> {
+    fn read_wgpu_27_texture(&self, _texture: &wgpu::Texture) -> Option<(u32, u32, Vec<u8>)> {
         // Texture readback to CPU is not implemented as it's inefficient.
         // Instead, WGPU textures should be rendered directly using GPU operations.
         // See WgpuBackend::render_wgpu_texture_to_target() for a potential GPU-based approach.
@@ -243,7 +255,7 @@ impl crate::GraphicsBackend for WgpuBackend {
         let queue = self.queue.borrow().clone();
         
         if let (Some(instance), Some(device), Some(queue)) = (instance, device, queue) {
-            Ok(callback(Some(i_slint_core::graphics::create_graphics_api_wgpu_26(
+            Ok(callback(Some(i_slint_core::graphics::create_graphics_api_wgpu_27(
                 instance, device, queue,
             ))))
         } else {

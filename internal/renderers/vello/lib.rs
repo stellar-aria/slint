@@ -69,12 +69,12 @@ pub trait GraphicsBackend {
         height: NonZeroU32,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>>;
 
-    /// Read a WGPU 26 texture back to CPU as RGBA8 data  
+    /// Read a WGPU 27 texture back to CPU as RGBA8 data  
     /// Returns (width, height, rgba_data) if successful
     ///
     /// Note: Reading GPU textures back to CPU is inherently slow and should be avoided.
     /// This is provided for compatibility but may not be implemented by all backends.
-    fn read_wgpu_26_texture(&self, _texture: &wgpu_26::Texture) -> Option<(u32, u32, Vec<u8>)> {
+    fn read_wgpu_27_texture(&self, _texture: &wgpu_27::Texture) -> Option<(u32, u32, Vec<u8>)> {
         // Default implementation returns None - backends must override if they support this
         None
     }

@@ -145,7 +145,7 @@ pub struct VelloItemRenderer<'a> {
     window_inner: &'a WindowInner,
     scale_factor: f32,
     state_stack: Vec<RenderState>,
-    wgpu_texture_reader: Option<&'a dyn Fn(&wgpu_26::Texture) -> Option<(u32, u32, Vec<u8>)>>,
+    wgpu_texture_reader: Option<&'a dyn Fn(&wgpu_27::Texture) -> Option<(u32, u32, Vec<u8>)>>,
     image_cache: &'a RefCell<HashMap<usize, std::sync::Arc<Vec<u8>>>>,
 }
 
@@ -188,7 +188,7 @@ impl<'a> VelloItemRenderer<'a> {
     #[allow(dead_code)]
     pub fn set_wgpu_texture_reader(
         &mut self,
-        reader: &'a dyn Fn(&wgpu_26::Texture) -> Option<(u32, u32, Vec<u8>)>,
+        reader: &'a dyn Fn(&wgpu_27::Texture) -> Option<(u32, u32, Vec<u8>)>,
     ) {
         self.wgpu_texture_reader = Some(reader);
     }
@@ -859,8 +859,8 @@ impl<'a> ItemRenderer for VelloItemRenderer<'a> {
             ImageInner::WGPUTexture(wgpu_texture) => {
                 use i_slint_core::graphics::WGPUTexture;
 
-                // Only handle WGPU 26 textures (the version we use for Vello backend)
-                if let WGPUTexture::WGPU26Texture(texture) = wgpu_texture {
+                // Handle WGPU 27 textures
+                if let WGPUTexture::WGPU27Texture(texture) = wgpu_texture {
                     if let Some(reader) = self.wgpu_texture_reader {
                         // Read texture back to CPU using the backend's reader
                         if let Some((width, height, rgba_data)) = reader(texture) {
@@ -909,7 +909,7 @@ impl<'a> ItemRenderer for VelloItemRenderer<'a> {
         size: LogicalSize,
         _cache: &CachedRenderingData,
     ) {
-        sharedparley::draw_text(self, text, Some(text.font_request(item_rc)), size);
+        sharedparley::draw_text(self, text, Some(item_rc), size);
     }
 
     fn draw_text_input(
@@ -921,7 +921,7 @@ impl<'a> ItemRenderer for VelloItemRenderer<'a> {
         sharedparley::draw_text_input(
             self,
             text_input,
-            Some(text_input.font_request(item_rc)),
+            item_rc,
             size,
             None,
         );
@@ -1014,6 +1014,7 @@ impl<'a> ItemRenderer for VelloItemRenderer<'a> {
         let fill_style = match path.fill_rule() {
             FillRule::Nonzero => Fill::NonZero,
             FillRule::Evenodd => Fill::EvenOdd,
+            _ => Fill::NonZero, // Default to non-zero for unknown variants
         };
 
         self.scene.fill(fill_style, self.current_transform(), &peniko_fill, None, &kurbo_path);
@@ -1037,6 +1038,7 @@ impl<'a> ItemRenderer for VelloItemRenderer<'a> {
                 LineCap::Butt => peniko::kurbo::Cap::Butt,
                 LineCap::Round => peniko::kurbo::Cap::Round,
                 LineCap::Square => peniko::kurbo::Cap::Square,
+                _ => peniko::kurbo::Cap::Butt, // Default to butt for unknown variants
             };
 
             // Use miter join with standard miter limit

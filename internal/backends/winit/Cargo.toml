@@ -45,7 +45,7 @@ renderer-femtovg-wgpu = ["i-slint-renderer-femtovg/wgpu", "dep:i-slint-renderer-
 renderer-skia = ["i-slint-renderer-skia"]
 renderer-skia-opengl = ["renderer-skia", "i-slint-renderer-skia/opengl"]
 renderer-skia-vulkan = ["renderer-skia", "i-slint-renderer-skia/vulkan"]
-renderer-vello = ["i-slint-renderer-vello", "unstable-wgpu-26"]
+renderer-vello = ["i-slint-renderer-vello", "unstable-wgpu-27"]
 renderer-software = [
   "dep:softbuffer",
   "dep:imgref",

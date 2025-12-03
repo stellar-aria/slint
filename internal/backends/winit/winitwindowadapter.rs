@@ -805,7 +805,7 @@ impl WinitWindowAdapter {
             .set(scheme);
 
         // Update the menubar theme
-        #[cfg(target_os = "windows")]
+        #[cfg(all(target_os = "windows", muda))]
         if let WinitWindowOrNone::HasWindow {
             window: winit_window,
             muda_adapter: maybe_muda_adapter,

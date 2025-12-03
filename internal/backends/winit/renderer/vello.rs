@@ -21,7 +21,7 @@ impl WGPUVelloRenderer {
     pub fn new_suspended(
         shared_backend_data: &Rc<crate::SharedBackendData>,
     ) -> Result<Box<dyn WinitCompatibleRenderer>, PlatformError> {
-        if !i_slint_core::graphics::wgpu_26::any_wgpu26_adapters_with_gpu(
+        if !i_slint_core::graphics::wgpu_27::any_wgpu27_adapters_with_gpu(
             shared_backend_data._requested_graphics_api.clone(),
         ) {
             return Err(PlatformError::from("Vello/WGPU: No GPU adapters found"));
