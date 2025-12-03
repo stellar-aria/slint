@@ -66,6 +66,7 @@ experimental-rich-text = []
 
 unstable-wgpu-27 = ["dep:wgpu-27"]
 unstable-wgpu-28 = ["dep:wgpu-28"]
+vello-scene = ["dep:vello"]
 
 tr = ["dep:tr"]
 
@@ -129,6 +130,7 @@ chrono = { version = "0.4", default-features = false, features = ["alloc"] }
 skrifa = { workspace = true, optional = true }
 swash = { workspace = true, optional = true, features = ["scale"] }
 
+vello = { workspace = true, optional = true }
 wgpu-27 = { workspace = true, optional = true }
 wgpu-28 = { workspace = true, optional = true }
 

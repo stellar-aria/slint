@@ -150,6 +150,15 @@ pub struct VelloItemRenderer<'a> {
 }
 
 impl<'a> VelloItemRenderer<'a> {
+    pub fn new(
+        scene: &'a mut Scene,
+        window_inner: &'a WindowInner,
+        logical_size: LogicalSize,
+        image_cache: &'a RefCell<HashMap<usize, std::sync::Arc<Vec<u8>>>>,
+    ) -> Self {
+        Self::new_with_transform(scene, window_inner, logical_size, image_cache, Affine::IDENTITY)
+    }
+
     pub fn new_with_transform(
         scene: &'a mut Scene,
         window_inner: &'a WindowInner,
@@ -884,6 +893,46 @@ impl<'a> ItemRenderer for VelloItemRenderer<'a> {
                     }
                 }
             }
+            ImageInner::VelloScene { scene, .. } => {
+                // Append the sub-scene directly into the parent scene — no off-screen textures.
+                //
+                // Build an affine that:
+                //   1. offsets the source clip origin to (0,0)
+                //   2. scales the clipped region to fit the target area
+                //   3. translates to the target position inside the current transform
+                let scale_x = fit_result.source_to_target_x as f64;
+                let scale_y = fit_result.source_to_target_y as f64;
+                let offset_x = fit_result.offset.x as f64;
+                let offset_y = fit_result.offset.y as f64;
+                let source_translate_x = -source_clip.min_x() as f64;
+                let source_translate_y = -source_clip.min_y() as f64;
+
+                let sub_affine = self.current_transform()
+                    * Affine::translate((offset_x, offset_y))
+                    * Affine::scale_non_uniform(scale_x, scale_y)
+                    * Affine::translate((source_translate_x, source_translate_y));
+
+                // Clip to the target rectangle so that the sub-scene cannot bleed outside.
+                let clip_rect = peniko::kurbo::Rect::new(
+                    offset_x,
+                    offset_y,
+                    offset_x + fit_result.size.width as f64,
+                    offset_y + fit_result.size.height as f64,
+                );
+
+                self.scene.push_layer(
+                    peniko::Fill::NonZero,
+                    peniko::BlendMode::default(),
+                    self.current_state().alpha,
+                    self.current_transform(),
+                    &clip_rect,
+                );
+
+                self.scene.append(&scene.0, Some(sub_affine));
+
+                self.scene.pop_layer();
+            }
+
             ImageInner::None => {
                 // Empty image, nothing to render
             }

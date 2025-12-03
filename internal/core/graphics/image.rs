@@ -347,6 +347,8 @@ impl ImageCacheKey {
             ImageInner::NineSlice(nine) => vtable::VRc::borrow(nine).cache_key(),
             #[cfg(any(feature = "unstable-wgpu-27", feature = "unstable-wgpu-28"))]
             ImageInner::WGPUTexture(..) => return None,
+            #[cfg(feature = "vello-scene")]
+            ImageInner::VelloScene { .. } => return None,
         };
         if matches!(key, ImageCacheKey::Invalid) { None } else { Some(key) }
     }
@@ -409,6 +411,18 @@ impl OpaqueImage for WGPUTexture {
     }
 }
 
+/// A thin `Arc` wrapper around `vello::Scene` that provides `Debug` (since vello::Scene doesn't).
+#[cfg(feature = "vello-scene")]
+#[derive(Clone)]
+pub struct ArcVelloScene(pub std::sync::Arc<vello::Scene>);
+
+#[cfg(feature = "vello-scene")]
+impl core::fmt::Debug for ArcVelloScene {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("VelloScene").finish_non_exhaustive()
+    }
+}
+
 /// A resource is a reference to binary data, for example images. They can be accessible on the file
 /// system or embedded in the resulting binary. Or they might be URLs to a web server and a downloaded
 /// is necessary before they can be used.
@@ -435,6 +449,9 @@ pub enum ImageInner {
     NineSlice(vtable::VRc<OpaqueImageVTable, NineSliceImage>) = 7,
     #[cfg(any(feature = "unstable-wgpu-27", feature = "unstable-wgpu-28"))]
     WGPUTexture(WGPUTexture) = 8,
+    /// A vello Scene to be appended into the parent scene without any off-screen textures.
+    #[cfg(feature = "vello-scene")]
+    VelloScene { scene: ArcVelloScene, width: u32, height: u32 } = 9,
 }
 
 impl ImageInner {
@@ -554,6 +571,10 @@ impl ImageInner {
             ImageInner::NineSlice(nine) => nine.0.size(),
             #[cfg(any(feature = "unstable-wgpu-27", feature = "unstable-wgpu-28"))]
             ImageInner::WGPUTexture(texture) => texture.size(),
+            #[cfg(feature = "vello-scene")]
+            ImageInner::VelloScene { width, height, .. } => {
+                IntSize::new(*width, *height)
+            }
         }
     }
 }
@@ -574,6 +595,11 @@ impl PartialEq for ImageInner {
             #[cfg(not(target_arch = "wasm32"))]
             (Self::BorrowedOpenGLTexture(l0), Self::BorrowedOpenGLTexture(r0)) => l0 == r0,
             (Self::NineSlice(l), Self::NineSlice(r)) => l.0 == r.0 && l.1 == r.1,
+            #[cfg(feature = "vello-scene")]
+            (
+                Self::VelloScene { scene: ls, width: lw, height: lh },
+                Self::VelloScene { scene: rs, width: rw, height: rh },
+            ) => std::sync::Arc::ptr_eq(&ls.0, &rs.0) && *lw == *rw && *lh == *rh,
             _ => false,
         }
     }
@@ -831,6 +857,23 @@ impl Image {
             ImageInner::WGPUTexture(WGPUTexture::WGPU27Texture(texture)) => Some(texture.clone()),
             _ => None,
         }
+    }
+
+    /// Creates a new Image that wraps a pre-built [vello](https://vello.dev/) `Scene`.
+    ///
+    /// When rendered by the Vello backend, the sub-scene is appended directly into the parent
+    /// scene with the appropriate affine transform — no off-screen textures or readbacks are
+    /// needed, so this stays within a single GPU dispatch.
+    ///
+    /// `width` and `height` describe the natural size of the scene in physical pixels and are
+    /// used for image-fitting calculations (e.g. `ImageFit`).
+    #[cfg(feature = "vello-scene")]
+    pub fn from_vello_scene(scene: vello::Scene, width: u32, height: u32) -> Self {
+        Image(ImageInner::VelloScene {
+            scene: ArcVelloScene(std::sync::Arc::new(scene)),
+            width,
+            height,
+        })
     }
 
     /// Returns the [WGPU](http://wgpu.rs) 28.x texture that this image wraps; returns None if the image does not

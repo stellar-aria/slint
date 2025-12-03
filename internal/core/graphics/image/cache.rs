@@ -30,6 +30,8 @@ impl clru::WeightScale<ImageCacheKey, ImageInner> for ImageWeightInBytes {
             ImageInner::NineSlice(nine) => self.weight(_key, &nine.0),
             #[cfg(any(feature = "unstable-wgpu-27", feature = "unstable-wgpu-28"))]
             ImageInner::WGPUTexture(..) => 0, // The texture is imported from the application and will never reside in our cache.
+            #[cfg(feature = "vello-scene")]
+            ImageInner::VelloScene { .. } => 0, // Scene is managed externally; not cached here.
         }
     }
 }

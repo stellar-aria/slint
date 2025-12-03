@@ -422,3 +422,266 @@ impl<B: GraphicsBackend> RendererSealed for VelloRenderer<B> {
         self.maybe_window_adapter.borrow().as_ref().and_then(|w| w.upgrade())
     }
 }
+
+/// Public API extensions for embedding/integration
+impl<B: GraphicsBackend> VelloRenderer<B> {
+    /// Get a reference to the current vello Scene
+    /// 
+    /// This allows external renderers to access the scene directly for custom rendering.
+    /// The scene is updated during the `render()` call.
+    ///
+    /// # Example (Option A: Scene-Based Rendering)
+    /// ```ignore
+    /// // After calling component.render()
+    /// if let Some(renderer) = component.vello_renderer() {
+    ///     let scene = renderer.scene();
+    ///     // Use your own vello::Renderer to render this scene
+    ///     my_vello_renderer.render_to_texture(device, queue, scene, texture_view);
+    /// }
+    /// ```
+    pub fn scene(&self) -> std::cell::Ref<'_, vello::Scene> {
+        self.scene.borrow()
+    }
+
+    /// Populate the internal scene by rendering all Slint component items,
+    /// **without** presenting to any graphics backend surface.
+    ///
+    /// This is useful for headless / embedded scenarios where the caller will
+    /// take the resulting `vello::Scene` and render it with their own
+    /// `vello::Renderer` (e.g. composited into an iced wgpu pipeline).
+    ///
+    /// Call `set_logical_size()` on the component before invoking this so that
+    /// layout has the correct dimensions.
+    pub fn populate_scene(&self) -> Result<(), PlatformError> {
+        let window_adapter = self.window_adapter()?;
+        let window = window_adapter.window();
+        let window_size = window.size();
+
+        let Some((width, height)): Option<(NonZeroU32, NonZeroU32)> =
+            window_size.width.try_into().ok().zip(window_size.height.try_into().ok())
+        else {
+            return Ok(());
+        };
+
+        let window_inner = WindowInner::from_pub(window);
+
+        window_inner
+            .draw_contents(|components| -> Result<(), PlatformError> {
+                let mut scene = self.scene.borrow_mut();
+                scene.reset();
+
+                let window_background_brush =
+                    window_inner.window_item().map(|w| w.as_pin_ref().background());
+
+                if let Some(Brush::SolidColor(clear_color)) = window_background_brush {
+                    let color = peniko::Color::from_rgba8(
+                        clear_color.red(),
+                        clear_color.green(),
+                        clear_color.blue(),
+                        clear_color.alpha(),
+                    );
+                    scene.fill(
+                        peniko::Fill::NonZero,
+                        vello::kurbo::Affine::IDENTITY,
+                        color,
+                        None,
+                        &vello::kurbo::Rect::new(
+                            0.0,
+                            0.0,
+                            width.get() as f64,
+                            height.get() as f64,
+                        ),
+                    );
+                }
+
+                let logical_size = LogicalSize::new(width.get() as f32, height.get() as f32);
+                let mut item_renderer = self::itemrenderer::VelloItemRenderer::new(
+                    &mut scene,
+                    &window_inner,
+                    logical_size,
+                    &self.image_cache,
+                );
+
+                if let Some(window_item_rc) = window_inner.window_item_rc() {
+                    let window_item =
+                        window_item_rc.downcast::<i_slint_core::items::WindowItem>().unwrap();
+                    match window_item.as_pin_ref().background() {
+                        Brush::SolidColor(..) => {}
+                        _ => {
+                            item_renderer.draw_rectangle(
+                                window_item.as_pin_ref(),
+                                &window_item_rc,
+                                i_slint_core::lengths::logical_size_from_api(
+                                    window.size().to_logical(window_inner.scale_factor()),
+                                ),
+                                &window_item.as_pin_ref().cached_rendering_data,
+                            );
+                        }
+                    }
+                }
+
+                for (component, origin) in components {
+                    if let Some(component) = ItemTreeWeak::upgrade(component) {
+                        i_slint_core::item_rendering::render_component_items(
+                            &component,
+                            &mut item_renderer,
+                            *origin,
+                            &self.window_adapter()?,
+                        );
+                    }
+                }
+
+                drop(item_renderer);
+                Ok(())
+            })
+            .unwrap_or(Ok(()))
+    }
+
+    /// Render the current scene to a wgpu texture view
+    ///
+    /// This is a convenience method for Direct Texture Rendering.
+    /// It renders the current scene using the backend's rendering capabilities.
+    ///
+    /// # Arguments
+    /// * `width` - Width of the target texture in pixels
+    /// * `height` - Height of the target texture in pixels
+    ///
+    /// # Example (Option B: Direct Texture Rendering)
+    /// ```ignore
+    /// // After updating component state
+    /// if let Some(renderer) = component.vello_renderer_mut() {
+    ///     renderer.render_to_texture(800, 600)?;
+    /// }
+    /// ```
+    ///
+    /// # Note
+    /// This method uses the graphics backend's render_scene method. The actual
+    /// texture/surface being rendered to is managed by the graphics backend.
+    pub fn render_to_texture(
+        &self,
+        width: u32,
+        height: u32,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        let scene = self.scene.borrow();
+        self.graphics_backend.render_scene(&scene, width, height)
+    }
+}
+
+/// Render a Slint window's contents into a new `vello::Scene`, without requiring
+/// any GPU backend, winit window, or `VelloRenderer<B>` instance.
+///
+/// This is the primary entry point for **embedded** / **headless** scenarios
+/// where another framework (e.g. iced) already owns the wgpu device and render
+/// pipeline.  The caller is responsible for rasterising the returned `Scene`
+/// with their own `vello::Renderer`.
+///
+/// Call `window.dispatch_event(WindowEvent::Resized { .. })` before invoking
+/// this so that layout has the correct dimensions.
+pub fn render_window_to_scene(
+    window_adapter: &Rc<dyn WindowAdapter>,
+) -> Result<vello::Scene, PlatformError> {
+    let window = window_adapter.window();
+    let window_inner = WindowInner::from_pub(window);
+
+    // Use the window item's logical geometry (set by dispatch_event(Resized))
+    // rather than window_adapter.size() which may still report a default (640×480)
+    // in headless / embedded scenarios.
+    let (logical_w, logical_h) = window_inner
+        .window_item()
+        .map(|w| {
+            let pin = w.as_pin_ref();
+            (pin.width().get(), pin.height().get())
+        })
+        .unwrap_or_else(|| {
+            // Fallback to adapter-reported physical size (scale_factor = 1 assumption).
+            let s = window.size();
+            (s.width as f32, s.height as f32)
+        });
+
+    let width: u32 = logical_w as u32;
+    let height: u32 = logical_h as u32;
+
+    let Some((_nz_width, _nz_height)): Option<(NonZeroU32, NonZeroU32)> =
+        width.try_into().ok().zip(height.try_into().ok())
+    else {
+        // Zero-sized window – nothing to render.
+        return Ok(vello::Scene::new());
+    };
+
+    // Temporary per-call image cache.  For long-lived embedding scenarios the
+    // caller should keep a `VelloRenderer<B>` around instead.
+    let image_cache: RefCell<HashMap<ImageCacheKey, std::sync::Arc<Vec<u8>>>> =
+        RefCell::new(HashMap::new());
+
+    let scene = window_inner
+        .draw_contents(|components| -> Result<vello::Scene, PlatformError> {
+            let mut scene = vello::Scene::new();
+
+            // Fill with window background (solid colour fast-path).
+            let window_background_brush =
+                window_inner.window_item().map(|w| w.as_pin_ref().background());
+
+            if let Some(Brush::SolidColor(clear_color)) = window_background_brush {
+                let color = peniko::Color::from_rgba8(
+                    clear_color.red(),
+                    clear_color.green(),
+                    clear_color.blue(),
+                    clear_color.alpha(),
+                );
+                scene.fill(
+                    peniko::Fill::NonZero,
+                    vello::kurbo::Affine::IDENTITY,
+                    color,
+                    None,
+                    &vello::kurbo::Rect::new(
+                        0.0,
+                        0.0,
+                        width as f64,
+                        height as f64,
+                    ),
+                );
+            }
+
+            let logical_size = LogicalSize::new(logical_w, logical_h);
+            let mut item_renderer = self::itemrenderer::VelloItemRenderer::new(
+                &mut scene,
+                &window_inner,
+                logical_size,
+                &image_cache,
+            );
+
+            // Draw non-solid background (gradient, image, etc.).
+            if let Some(window_item_rc) = window_inner.window_item_rc() {
+                let window_item =
+                    window_item_rc.downcast::<i_slint_core::items::WindowItem>().unwrap();
+                match window_item.as_pin_ref().background() {
+                    Brush::SolidColor(..) => {}
+                    _ => {
+                        item_renderer.draw_rectangle(
+                            window_item.as_pin_ref(),
+                            &window_item_rc,
+                            LogicalSize::new(logical_w, logical_h),
+                            &window_item.as_pin_ref().cached_rendering_data,
+                        );
+                    }
+                }
+            }
+
+            for (component, origin) in components {
+                if let Some(component) = ItemTreeWeak::upgrade(component) {
+                    i_slint_core::item_rendering::render_component_items(
+                        &component,
+                        &mut item_renderer,
+                        *origin,
+                        window_adapter,
+                    );
+                }
+            }
+
+            drop(item_renderer);
+            Ok(scene)
+        })
+        .unwrap_or_else(|| Ok(vello::Scene::new()))?;
+
+    Ok(scene)
+}

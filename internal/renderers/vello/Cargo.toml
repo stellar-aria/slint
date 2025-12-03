@@ -19,7 +19,7 @@ path = "lib.rs"
 default = ["i-slint-core/unstable-wgpu-28"]
 
 [dependencies]
-i-slint-core = { workspace = true, features = ["default", "box-shadow-cache", "shared-fontique", "shared-parley"] }
+i-slint-core = { workspace = true, features = ["default", "box-shadow-cache", "shared-fontique", "shared-parley", "vello-scene"] }
 i-slint-core-macros = { workspace = true, features = ["default"] }
 i-slint-common = { workspace = true, features = ["default", "shared-fontique"] }
 
@@ -31,7 +31,8 @@ lyon_path = "1.0"
 pin-weak = "1"
 
 # Vello core dependencies (main branch)
-vello = "0.8.0"
+vello = { workspace = true }
+vello_encoding = "0.8.0"
 parley = { version = "0.7.0" }
 
 # WGPU for rendering

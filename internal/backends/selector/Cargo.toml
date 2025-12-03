@@ -36,6 +36,7 @@ renderer-vello = [
   "i-slint-backend-winit?/renderer-vello",
   "i-slint-backend-linuxkms?/renderer-vello",
   "i-slint-renderer-skia?/unstable-wgpu-27",
+  "i-slint-renderer-skia?/vello-scene",
 ]
 renderer-skia = ["i-slint-backend-winit?/renderer-skia", "i-slint-backend-linuxkms?/renderer-skia"]
 renderer-skia-opengl = [
