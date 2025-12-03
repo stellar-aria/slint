@@ -1616,8 +1616,8 @@ impl ComponentInstance {
     /// Render the component into the vello Scene
     ///
     /// This method triggers rendering to update the internal vello Scene without
-    /// displaying anything on screen. This is useful when you want to access the
-    /// rendered scene via `vello_scene()` without showing a window.
+    /// displaying anything on screen. Use `set_logical_size()` first to set the
+    /// desired rendering dimensions.
     ///
     /// Returns an error if the vello renderer is not being used or if
     /// rendering fails.
@@ -1628,6 +1628,9 @@ impl ComponentInstance {
     ///
     /// let instance = /* ... */;
     /// 
+    /// // Set the size before rendering
+    /// instance.set_logical_size(800.0, 600.0);
+    /// 
     /// // Render to update the scene
     /// instance.render_to_scene()?;
     /// 
@@ -1637,7 +1640,7 @@ impl ComponentInstance {
     /// }
     /// ```
     #[cfg(feature = "renderer-vello")]
-    pub fn render_to_scene(&self) -> Result<(), i_slint_core::api::PlatformError> {
+    pub fn render_to_scene(&self) -> Result<crate::vello::Scene, i_slint_core::api::PlatformError> {
         #[cfg(feature = "backend-winit")]
         {
             let window_adapter = self.inner.window_adapter_ref()?;
@@ -1656,12 +1659,82 @@ impl ComponentInstance {
                     "Vello renderer not available".into()
                 ))?;
             
-            vello_renderer.vello_renderer().render()
+            // Trigger a render to update the scene
+            vello_renderer.vello_renderer().render()?;
+            
+            // Clone and return the scene
+            Ok(vello_renderer.vello_renderer().scene().clone())
         }
         
         #[cfg(not(feature = "backend-winit"))]
         {
             let _ = self; // Suppress unused variable warnings
+            Err(i_slint_core::api::PlatformError::Other(
+                "Vello renderer not available or backend does not support it".into()
+            ))
+        }
+    }
+
+    /// Render the component into an existing vello Scene (in-place, avoiding allocations)
+    ///
+    /// This method is a more efficient alternative to `render_to_scene()` when you want
+    /// to reuse the same Scene allocation across multiple frames. The provided scene will
+    /// be reset and populated with the current component's rendering commands.
+    ///
+    /// Use `set_logical_size()` first to set the desired rendering dimensions.
+    ///
+    /// Returns an error if the vello renderer is not being used or if rendering fails.
+    ///
+    /// # Example
+    /// ```ignore
+    /// use slint_interpreter::ComponentInstance;
+    /// use vello::Scene;
+    ///
+    /// let instance = /* ... */;
+    /// let mut scene = Scene::new();
+    /// 
+    /// // Set the size once
+    /// instance.set_logical_size(800.0, 600.0);
+    /// 
+    /// // Reuse the same scene every frame
+    /// loop {
+    ///     instance.render_to_scene_in_place(&mut scene)?;
+    ///     // Render the scene with your vello::Renderer
+    /// }
+    /// ```
+    #[cfg(feature = "renderer-vello")]
+    pub fn render_to_scene_in_place(&self, scene: &mut crate::vello::Scene) -> Result<(), i_slint_core::api::PlatformError> {
+        #[cfg(feature = "backend-winit")]
+        {
+            let window_adapter = self.inner.window_adapter_ref()?;
+            
+            // Downcast to WinitWindowAdapter
+            let winit_adapter = window_adapter.internal(i_slint_core::InternalToken)
+                .and_then(|wa| (wa as &dyn std::any::Any).downcast_ref::<i_slint_backend_winit::WinitWindowAdapter>())
+                .ok_or_else(|| i_slint_core::api::PlatformError::Other(
+                    "Vello renderer not available or backend does not support it".into()
+                ))?;
+            
+            // Downcast the renderer to WGPUVelloRenderer
+            let vello_renderer = (winit_adapter.renderer.as_ref() as &dyn std::any::Any)
+                .downcast_ref::<i_slint_backend_winit::renderer::vello::WGPUVelloRenderer>()
+                .ok_or_else(|| i_slint_core::api::PlatformError::Other(
+                    "Vello renderer not available".into()
+                ))?;
+            
+            // Trigger a render to update the internal scene
+            vello_renderer.vello_renderer().render()?;
+            
+            // Copy the rendered scene into the provided scene
+            scene.reset();
+            scene.append(&*vello_renderer.vello_renderer().scene(), None);
+            
+            Ok(())
+        }
+        
+        #[cfg(not(feature = "backend-winit"))]
+        {
+            let _ = (self, scene); // Suppress unused variable warnings
             Err(i_slint_core::api::PlatformError::Other(
                 "Vello renderer not available or backend does not support it".into()
             ))
@@ -1733,6 +1806,76 @@ impl ComponentInstance {
                 "Vello renderer not available or backend does not support it".into()
             ))
         }
+    }
+
+    /// Returns a reference to the Window associated with this component instance.
+    ///
+    /// Use this to dispatch events via `window().dispatch_event()` or query window properties.
+    ///
+    /// # Example
+    /// ```ignore
+    /// use slint_interpreter::ComponentInstance;
+    /// use i_slint_core::platform::WindowEvent;
+    /// use i_slint_core::api::LogicalPosition;
+    ///
+    /// let instance = /* ... */;
+    /// let window = instance.window();
+    /// window.dispatch_event(WindowEvent::PointerPressed {
+    ///     position: LogicalPosition::new(10.0, 20.0),
+    ///     button: i_slint_core::platform::PointerEventButton::Left,
+    /// });
+    /// ```
+    pub fn window(&self) -> &i_slint_core::api::Window {
+        &self.inner.window_adapter_ref()
+            .expect("ComponentInstance must have a window adapter")
+            .window()
+    }
+
+    /// Set the logical size of the component
+    ///
+    /// This informs Slint about the available rendering space so it can
+    /// properly layout elements that use relative sizing (e.g., width: 100%)
+    ///
+    /// # Parameters
+    /// - `width`: Logical width in pixels
+    /// - `height`: Logical height in pixels
+    ///
+    /// # Example
+    /// ```ignore
+    /// use slint_interpreter::ComponentInstance;
+    ///
+    /// let instance = /* ... */;
+    /// instance.set_logical_size(800.0, 600.0);
+    /// ```
+    pub fn set_logical_size(&self, width: f32, height: f32) {
+        use i_slint_core::api::LogicalSize;
+        
+        let window = self.window();
+        window.dispatch_event(i_slint_core::platform::WindowEvent::Resized {
+            size: LogicalSize::new(width, height),
+        });
+    }
+
+    /// Get the current logical size
+    ///
+    /// Returns (width, height) that was set via set_logical_size or
+    /// the component's intrinsic size
+    ///
+    /// # Returns
+    /// A tuple of (width, height) in logical pixels
+    ///
+    /// # Example
+    /// ```ignore
+    /// use slint_interpreter::ComponentInstance;
+    ///
+    /// let instance = /* ... */;
+    /// let (width, height) = instance.logical_size();
+    /// println!(\"Component size: {}x{}\", width, height);
+    /// ```
+    pub fn logical_size(&self) -> (f32, f32) {
+        let window = self.window();
+        let size = window.size();
+        (size.width as f32, size.height as f32)
     }
 }
 
@@ -1852,7 +1995,6 @@ pub fn spawn_local<F: Future + 'static>(fut: F) -> Result<JoinHandle<F::Output>,
 /// This module contains a few functions used by the tests
 #[doc(hidden)]
 pub mod testing {
-    use super::ComponentHandle;
     use i_slint_core::window::WindowInner;
 
     /// Wrapper around [`i_slint_core::tests::slint_send_mouse_click`]
@@ -1860,7 +2002,7 @@ pub mod testing {
         i_slint_core::tests::slint_send_mouse_click(
             x,
             y,
-            &WindowInner::from_pub(comp.window()).window_adapter(),
+            &WindowInner::from_pub(&comp.window()).window_adapter(),
         );
     }
 
@@ -1873,7 +2015,7 @@ pub mod testing {
         i_slint_core::tests::slint_send_keyboard_char(
             &string,
             pressed,
-            &WindowInner::from_pub(comp.window()).window_adapter(),
+            &WindowInner::from_pub(&comp.window()).window_adapter(),
         );
     }
     /// Wrapper around [`i_slint_core::tests::send_keyboard_string_sequence`]
@@ -1883,7 +2025,7 @@ pub mod testing {
     ) {
         i_slint_core::tests::send_keyboard_string_sequence(
             &string,
-            &WindowInner::from_pub(comp.window()).window_adapter(),
+            &WindowInner::from_pub(&comp.window()).window_adapter(),
         );
     }
 }
