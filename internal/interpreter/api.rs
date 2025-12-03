@@ -1567,6 +1567,173 @@ impl ComponentInstance {
     ) -> Vec<(i_slint_compiler::object_tree::ElementRc, usize)> {
         crate::highlight::element_node_at_source_code_position(&self.inner, path, offset)
     }
+
+    /// Get access to the vello Scene for custom rendering
+    ///
+    /// This method provides read-only access to the vello Scene after rendering.
+    /// It allows external renderers (like iced) to use their own vello::Renderer
+    /// to render the Slint UI.
+    ///
+    /// Returns `None` if the vello renderer is not being used.
+    ///
+    /// # Example
+    /// ```ignore
+    /// use slint_interpreter::ComponentInstance;
+    ///
+    /// let instance = /* ... */;
+    /// instance.window().request_redraw(); // Ensure scene is up to date
+    ///
+    /// if let Some(scene_ref) = instance.vello_scene() {
+    ///     let scene = scene_ref.clone(); // Clone the scene if needed
+    ///     // Use your own vello::Renderer to render this scene
+    ///     my_renderer.render_to_texture(device, queue, &scene, texture_view)?;
+    /// }
+    /// ```
+    #[cfg(feature = "renderer-vello")]
+    pub fn vello_scene(&self) -> Option<std::cell::Ref<'_, crate::vello::Scene>> {
+        #[cfg(feature = "backend-winit")]
+        {
+            let window_adapter = self.inner.window_adapter_ref().ok()?;
+            
+            // Downcast to WinitWindowAdapter
+            let winit_adapter = window_adapter.internal(i_slint_core::InternalToken)
+                .and_then(|wa| (wa as &dyn std::any::Any).downcast_ref::<i_slint_backend_winit::WinitWindowAdapter>())?;
+            
+            // Downcast the renderer to WGPUVelloRenderer
+            let vello_renderer = (winit_adapter.renderer.as_ref() as &dyn std::any::Any)
+                .downcast_ref::<i_slint_backend_winit::renderer::vello::WGPUVelloRenderer>()?;
+            
+            Some(vello_renderer.vello_renderer().scene())
+        }
+        
+        #[cfg(not(feature = "backend-winit"))]
+        {
+            let _ = self; // Suppress unused variable warning
+            None
+        }
+    }
+
+    /// Render the component into the vello Scene
+    ///
+    /// This method triggers rendering to update the internal vello Scene without
+    /// displaying anything on screen. This is useful when you want to access the
+    /// rendered scene via `vello_scene()` without showing a window.
+    ///
+    /// Returns an error if the vello renderer is not being used or if
+    /// rendering fails.
+    ///
+    /// # Example
+    /// ```ignore
+    /// use slint_interpreter::ComponentInstance;
+    ///
+    /// let instance = /* ... */;
+    /// 
+    /// // Render to update the scene
+    /// instance.render_to_scene()?;
+    /// 
+    /// // Now access the updated scene
+    /// if let Some(scene) = instance.vello_scene() {
+    ///     // Use the scene for custom rendering
+    /// }
+    /// ```
+    #[cfg(feature = "renderer-vello")]
+    pub fn render_to_scene(&self) -> Result<(), i_slint_core::api::PlatformError> {
+        #[cfg(feature = "backend-winit")]
+        {
+            let window_adapter = self.inner.window_adapter_ref()?;
+            
+            // Downcast to WinitWindowAdapter
+            let winit_adapter = window_adapter.internal(i_slint_core::InternalToken)
+                .and_then(|wa| (wa as &dyn std::any::Any).downcast_ref::<i_slint_backend_winit::WinitWindowAdapter>())
+                .ok_or_else(|| i_slint_core::api::PlatformError::Other(
+                    "Vello renderer not available or backend does not support it".into()
+                ))?;
+            
+            // Downcast the renderer to WGPUVelloRenderer
+            let vello_renderer = (winit_adapter.renderer.as_ref() as &dyn std::any::Any)
+                .downcast_ref::<i_slint_backend_winit::renderer::vello::WGPUVelloRenderer>()
+                .ok_or_else(|| i_slint_core::api::PlatformError::Other(
+                    "Vello renderer not available".into()
+                ))?;
+            
+            vello_renderer.vello_renderer().render()
+        }
+        
+        #[cfg(not(feature = "backend-winit"))]
+        {
+            let _ = self; // Suppress unused variable warnings
+            Err(i_slint_core::api::PlatformError::Other(
+                "Vello renderer not available or backend does not support it".into()
+            ))
+        }
+    }
+
+    /// Render directly to a texture with specified dimensions
+    ///
+    /// This is a convenience method that triggers a render and outputs to the
+    /// backend's current texture/surface at the specified dimensions.
+    ///
+    /// This is simpler than Option A but less flexible. It renders using the
+    /// component's internal renderer and backend.
+    ///
+    /// Returns an error if the vello renderer is not being used or if
+    /// rendering fails.
+    ///
+    /// # Arguments
+    /// * `width` - Width of the target texture in pixels
+    /// * `height` - Height of the target texture in pixels
+    ///
+    /// # Example
+    /// ```ignore
+    /// use slint_interpreter::ComponentInstance;
+    ///
+    /// let instance = /* ... */;
+    /// 
+    /// // Render to 800x600 texture
+    /// instance.render_to_vello_texture(800, 600)?;
+    /// ```
+    #[cfg(feature = "renderer-vello")]
+    pub fn render_to_vello_texture(
+        &self,
+        width: u32,
+        height: u32,
+    ) -> Result<(), i_slint_core::api::PlatformError> {
+        #[cfg(feature = "backend-winit")]
+        {
+            let window_adapter = self.inner.window_adapter_ref()?;
+            
+            // Downcast to WinitWindowAdapter
+            let winit_adapter = window_adapter.internal(i_slint_core::InternalToken)
+                .and_then(|wa| (wa as &dyn std::any::Any).downcast_ref::<i_slint_backend_winit::WinitWindowAdapter>())
+                .ok_or_else(|| i_slint_core::api::PlatformError::Other(
+                    "Vello renderer not available or backend does not support it".into()
+                ))?;
+            
+            // Downcast the renderer to WGPUVelloRenderer
+            let vello_renderer = (winit_adapter.renderer.as_ref() as &dyn std::any::Any)
+                .downcast_ref::<i_slint_backend_winit::renderer::vello::WGPUVelloRenderer>()
+                .ok_or_else(|| i_slint_core::api::PlatformError::Other(
+                    "Vello renderer not available".into()
+                ))?;
+            
+            // First render to update the scene
+            vello_renderer.vello_renderer().render()?;
+            
+            // Then render to texture
+            vello_renderer.vello_renderer().render_to_texture(width, height)
+                .map_err(|e| i_slint_core::api::PlatformError::Other(format!("Vello render failed: {}", e).into()))?;
+            
+            Ok(())
+        }
+        
+        #[cfg(not(feature = "backend-winit"))]
+        {
+            let _ = (self, width, height); // Suppress unused variable warnings
+            Err(i_slint_core::api::PlatformError::Other(
+                "Vello renderer not available or backend does not support it".into()
+            ))
+        }
+    }
 }
 
 impl ComponentHandle for ComponentInstance {

@@ -99,5 +99,10 @@ pub use api::*;
 #[doc(hidden)]
 pub use eval::default_value_for_type;
 
+/// Re-export vello when using the vello renderer for access to Scene type
+#[cfg(feature = "renderer-vello")]
+#[doc(inline)]
+pub use i_slint_renderer_vello::vello;
+
 #[cfg(test)]
 mod tests;

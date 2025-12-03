@@ -34,6 +34,12 @@ impl WGPUVelloRenderer {
             requested_graphics_api: shared_backend_data._requested_graphics_api.clone(),
         }))
     }
+
+    /// Access the underlying VelloRenderer
+    #[allow(dead_code)] // Used by slint-interpreter when renderer-vello feature is enabled
+    pub fn vello_renderer(&self) -> &VelloRenderer<i_slint_renderer_vello::wgpu::WgpuBackend> {
+        &self.renderer
+    }
 }
 
 impl WinitCompatibleRenderer for WGPUVelloRenderer {

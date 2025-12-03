@@ -546,3 +546,53 @@ impl<B: GraphicsBackend> RendererSealed for VelloRenderer<B> {
         self.maybe_window_adapter.borrow().as_ref().and_then(|w| w.upgrade())
     }
 }
+
+/// Public API extensions for embedding/integration
+impl<B: GraphicsBackend> VelloRenderer<B> {
+    /// Get a reference to the current vello Scene
+    /// 
+    /// This allows external renderers to access the scene directly for custom rendering.
+    /// The scene is updated during the `render()` call.
+    ///
+    /// # Example (Option A: Scene-Based Rendering)
+    /// ```ignore
+    /// // After calling component.render()
+    /// if let Some(renderer) = component.vello_renderer() {
+    ///     let scene = renderer.scene();
+    ///     // Use your own vello::Renderer to render this scene
+    ///     my_vello_renderer.render_to_texture(device, queue, scene, texture_view);
+    /// }
+    /// ```
+    pub fn scene(&self) -> std::cell::Ref<'_, vello::Scene> {
+        self.scene.borrow()
+    }
+
+    /// Render the current scene to a wgpu texture view
+    ///
+    /// This is a convenience method for Direct Texture Rendering.
+    /// It renders the current scene using the backend's rendering capabilities.
+    ///
+    /// # Arguments
+    /// * `width` - Width of the target texture in pixels
+    /// * `height` - Height of the target texture in pixels
+    ///
+    /// # Example (Option B: Direct Texture Rendering)
+    /// ```ignore
+    /// // After updating component state
+    /// if let Some(renderer) = component.vello_renderer_mut() {
+    ///     renderer.render_to_texture(800, 600)?;
+    /// }
+    /// ```
+    ///
+    /// # Note
+    /// This method uses the graphics backend's render_scene method. The actual
+    /// texture/surface being rendered to is managed by the graphics backend.
+    pub fn render_to_texture(
+        &self,
+        width: u32,
+        height: u32,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        let scene = self.scene.borrow();
+        self.graphics_backend.render_scene(&scene, width, height)
+    }
+}

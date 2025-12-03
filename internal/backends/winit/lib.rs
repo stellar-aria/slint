@@ -26,7 +26,7 @@ use winit::event_loop::ActiveEventLoop;
 mod clipboard;
 mod drag_resize_window;
 mod winitwindowadapter;
-use winitwindowadapter::*;
+pub use winitwindowadapter::WinitWindowAdapter;
 pub(crate) mod event_loop;
 mod frame_throttle;
 #[cfg(target_os = "ios")]
@@ -58,7 +58,7 @@ pub enum EventResult {
     PreventDefault,
 }
 
-mod renderer {
+pub mod renderer {
     use std::sync::Arc;
 
     use i_slint_core::platform::PlatformError;
@@ -90,7 +90,7 @@ mod renderer {
     pub(crate) mod skia;
 
     #[cfg(feature = "renderer-vello")]
-    pub(crate) mod vello;
+    pub mod vello;
 
     #[cfg(feature = "renderer-software")]
     pub(crate) mod sw;
