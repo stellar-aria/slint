@@ -434,19 +434,26 @@ impl<B: GraphicsBackend> Drop for VelloRenderer<B> {
 impl<B: GraphicsBackend> RendererSealed for VelloRenderer<B> {
     fn text_size(
         &self,
-        font_request: i_slint_core::graphics::FontRequest,
-        text: &str,
+        text_item: Pin<&dyn i_slint_core::item_rendering::RenderString>,
+        item_rc: &i_slint_core::item_tree::ItemRc,
         max_width: Option<LogicalLength>,
-        scale_factor: ScaleFactor,
         text_wrap: TextWrap,
     ) -> LogicalSize {
-        sharedparley::text_size(font_request, text, max_width, scale_factor, text_wrap)
+        sharedparley::text_size(self, text_item, item_rc, max_width, text_wrap)
+    }
+
+    fn char_size(
+        &self,
+        text_item: Pin<&dyn i_slint_core::item_rendering::HasFont>,
+        item_rc: &i_slint_core::item_tree::ItemRc,
+        ch: char,
+    ) -> LogicalSize {
+        sharedparley::char_size(text_item, item_rc, ch).unwrap_or_default()
     }
 
     fn font_metrics(
         &self,
         font_request: i_slint_core::graphics::FontRequest,
-        _scale_factor: ScaleFactor,
     ) -> i_slint_core::items::FontMetrics {
         sharedparley::font_metrics(font_request)
     }
@@ -454,30 +461,28 @@ impl<B: GraphicsBackend> RendererSealed for VelloRenderer<B> {
     fn text_input_byte_offset_for_position(
         &self,
         text_input: Pin<&i_slint_core::items::TextInput>,
+        item_rc: &i_slint_core::item_tree::ItemRc,
         pos: LogicalPoint,
-        font_request: FontRequest,
-        scale_factor: ScaleFactor,
     ) -> usize {
         sharedparley::text_input_byte_offset_for_position(
+            self,
             text_input,
+            item_rc,
             pos,
-            font_request,
-            scale_factor,
         )
     }
 
     fn text_input_cursor_rect_for_byte_offset(
         &self,
         text_input: Pin<&i_slint_core::items::TextInput>,
+        item_rc: &i_slint_core::item_tree::ItemRc,
         byte_offset: usize,
-        font_request: FontRequest,
-        scale_factor: ScaleFactor,
     ) -> LogicalRect {
         sharedparley::text_input_cursor_rect_for_byte_offset(
+            self,
             text_input,
+            item_rc,
             byte_offset,
-            font_request,
-            scale_factor,
         )
     }
 
@@ -536,5 +541,9 @@ impl<B: GraphicsBackend> RendererSealed for VelloRenderer<B> {
             self.graphics_backend.resize(width, height)?;
         };
         Ok(())
+    }
+
+    fn window_adapter(&self) -> Option<Rc<dyn WindowAdapter>> {
+        self.maybe_window_adapter.borrow().as_ref().and_then(|w| w.upgrade())
     }
 }
