@@ -19,11 +19,10 @@ use i_slint_core::graphics::euclid;
 use i_slint_core::graphics::rendering_metrics_collector::{
     RenderingMetrics, RenderingMetricsCollector,
 };
-use i_slint_core::graphics::FontRequest;
 use i_slint_core::item_rendering::ItemRenderer;
 use i_slint_core::item_tree::ItemTreeWeak;
 use i_slint_core::items::TextWrap;
-use i_slint_core::lengths::{LogicalLength, LogicalPoint, LogicalRect, LogicalSize, ScaleFactor};
+use i_slint_core::lengths::{LogicalLength, LogicalPoint, LogicalRect, LogicalSize};
 use i_slint_core::platform::PlatformError;
 use i_slint_core::renderer::RendererSealed;
 use i_slint_core::textlayout::sharedparley;

@@ -536,6 +536,7 @@ impl<'a> ItemRenderer for VelloItemRenderer<'a> {
 
                 // Push a clipping layer to restrict drawing to the intended region
                 self.scene.push_layer(
+                    peniko::Fill::NonZero,
                     peniko::BlendMode::default(),
                     self.current_state().alpha,
                     self.current_transform(),
@@ -749,6 +750,7 @@ impl<'a> ItemRenderer for VelloItemRenderer<'a> {
                         );
 
                         self.scene.push_layer(
+                            peniko::Fill::NonZero,
                             peniko::BlendMode::default(),
                             self.current_state().alpha,
                             slice_transform,
@@ -1165,6 +1167,7 @@ impl<'a> ItemRenderer for VelloItemRenderer<'a> {
 
             // Push a clip layer
             self.scene.push_layer(
+                peniko::Fill::NonZero,
                 peniko::BlendMode::default(),
                 1.0,
                 current_transform,
@@ -1175,6 +1178,7 @@ impl<'a> ItemRenderer for VelloItemRenderer<'a> {
             let clip_shape = self.to_kurbo_rect(rect);
 
             self.scene.push_layer(
+                peniko::Fill::NonZero,
                 peniko::BlendMode::default(),
                 1.0,
                 current_transform,
