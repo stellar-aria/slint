@@ -1794,7 +1794,7 @@ impl ComponentInstance {
             
             // Then render to texture
             vello_renderer.vello_renderer().render_to_texture(width, height)
-                .map_err(|e| i_slint_core::api::PlatformError::Other(format!("Vello render failed: {}", e).into()))?;
+                .map_err(|e| i_slint_core::api::PlatformError::Other(std::format!("Vello render failed: {}", e).into()))?;
             
             Ok(())
         }
