@@ -263,6 +263,39 @@ pub enum Expression {
         /// The `n` value to use for the plural form if it is a plural form
         plural: Option<Box<Expression>>,
     },
+
+    /// A dynamic path built at runtime from a mix of static and repeated/conditional items.
+    /// Evaluates to `Type::PathData`.
+    WithPathData { elements: Vec<PathDataElement> },
+}
+
+/// One entry in a `WithPathData` expression: either a static path element struct expression
+/// or a repeated/conditional dynamic path item.
+#[derive(Debug, Clone)]
+pub enum PathDataElement {
+    /// A statically-known path element (struct expression).
+    Static(Box<Expression>),
+    /// A path element produced by iterating over a model (`for x in model: elem`)
+    /// or gated by a boolean condition (`if cond: elem`).
+    Dynamic(DynamicPathItem),
+}
+
+/// A repeated (`for`) or conditional (`if`) path item at the LLR level.
+#[derive(Debug, Clone)]
+pub struct DynamicPathItem {
+    /// The model expression. For `if cond:` this is `Type::Bool`.
+    /// For `for x in model:` this is `Type::Array(...)` / `Type::Model`.
+    pub model: Box<Expression>,
+    /// Name of the loop data variable (matches `ReadLocalVariable` nodes in `element_expr`).
+    /// Empty string when there is no data variable (unused in conditional paths).
+    pub data_var: SmolStr,
+    /// Name of the index variable, or empty string when none is declared.
+    pub index_var: SmolStr,
+    /// Whether this is a conditional element (`if`) rather than a repeating element (`for`).
+    pub is_conditional: bool,
+    /// The struct expression for one path element, with `ReadLocalVariable` nodes referring
+    /// to `data_var` / `index_var`.
+    pub element_expr: Box<Expression>,
 }
 
 impl Expression {
@@ -384,6 +417,7 @@ impl Expression {
             Self::MinMax { ty, .. } => ty.clone(),
             Self::EmptyComponentFactory => Type::ComponentFactory,
             Self::TranslationReference { .. } => Type::String,
+            Self::WithPathData { .. } => Type::PathData,
         }
     }
 }
@@ -501,6 +535,17 @@ macro_rules! visit_impl {
                 $visitor(format_args);
                 if let Some(plural) = plural {
                     $visitor(plural);
+                }
+            }
+            Expression::WithPathData { elements } => {
+                for elem in elements.$iter() {
+                    match elem {
+                        PathDataElement::Static(expr) => $visitor(expr),
+                        PathDataElement::Dynamic(DynamicPathItem { model, element_expr, .. }) => {
+                            $visitor(model);
+                            $visitor(element_expr);
+                        }
+                    }
                 }
             }
         }

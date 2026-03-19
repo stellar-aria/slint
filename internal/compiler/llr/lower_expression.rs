@@ -732,6 +732,93 @@ fn compile_path(
             from: lower_expression(commands, ctx).into(),
             to: Type::PathData,
         },
+        crate::expression_tree::Path::ItemList(items) => {
+            // Helper: build a Struct expression for a single path element given the element
+            // type and a function that resolves bindings from a name.
+            fn build_element_struct(
+                element_type: &Rc<crate::langtype::BuiltinElement>,
+                mut get_binding: impl FnMut(
+                    &SmolStr,
+                    &crate::langtype::BuiltinPropertyInfo,
+                ) -> llr_Expression,
+            ) -> llr_Expression {
+                let struct_ty = Rc::new(Struct {
+                    fields: element_type
+                        .properties
+                        .iter()
+                        .map(|(k, v)| (k.clone(), v.ty.clone()))
+                        .collect(),
+                    name: StructName::BuiltinPrivate(
+                        element_type
+                            .native_class
+                            .builtin_struct
+                            .clone()
+                            .expect("path elements should have a native_type"),
+                    ),
+                });
+                llr_Expression::Struct {
+                    ty: struct_ty,
+                    values: element_type
+                        .properties
+                        .iter()
+                        .map(|(k, v)| (k.clone(), get_binding(k, v)))
+                        .collect(),
+                }
+            }
+
+            let mut llr_items =
+                Vec::<crate::llr::expression::PathDataElement>::with_capacity(items.len());
+
+            for item in items.iter() {
+                match item {
+                    crate::expression_tree::PathItemOrRepeater::Static(elem) => {
+                        let struct_expr = build_element_struct(
+                            &elem.element_type,
+                            |field_name, field_prop| {
+                                elem.bindings.get(field_name).map_or_else(
+                                    || {
+                                        llr_Expression::default_value_for_type(&field_prop.ty)
+                                            .unwrap()
+                                    },
+                                    |binding| {
+                                        lower_expression(&binding.borrow().expression, ctx)
+                                    },
+                                )
+                            },
+                        );
+                        llr_items.push(crate::llr::expression::PathDataElement::Static(
+                            Box::new(struct_expr),
+                        ));
+                    }
+                    crate::expression_tree::PathItemOrRepeater::Repeated(rep) => {
+                        let lowered_model = lower_expression(&rep.model, ctx);
+                        let element_expr = build_element_struct(
+                            &rep.element_type,
+                            |field_name, field_prop| {
+                                rep.bindings.get(field_name).map_or_else(
+                                    || {
+                                        llr_Expression::default_value_for_type(&field_prop.ty)
+                                            .unwrap()
+                                    },
+                                    |binding| lower_expression(binding, ctx),
+                                )
+                            },
+                        );
+                        llr_items.push(crate::llr::expression::PathDataElement::Dynamic(
+                            crate::llr::expression::DynamicPathItem {
+                                model: Box::new(lowered_model),
+                                data_var: rep.model_data_id.clone(),
+                                index_var: rep.index_id.clone(),
+                                is_conditional: rep.is_conditional,
+                                element_expr: Box::new(element_expr),
+                            },
+                        ));
+                    }
+                }
+            }
+
+            llr_Expression::WithPathData { elements: llr_items }
+        }
     }
 }
 

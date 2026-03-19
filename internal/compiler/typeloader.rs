@@ -825,6 +825,56 @@ impl Snapshotter {
                 expression_tree::Path::Commands(ex) => {
                     expression_tree::Path::Commands(Box::new(self.snapshot_expression(ex)))
                 }
+                expression_tree::Path::ItemList(items) => {
+                    expression_tree::Path::ItemList(
+                        items
+                            .iter()
+                            .map(|item| match item {
+                                expression_tree::PathItemOrRepeater::Static(elem) => {
+                                    expression_tree::PathItemOrRepeater::Static(
+                                        expression_tree::PathElement {
+                                            element_type: elem.element_type.clone(),
+                                            bindings: elem
+                                                .bindings
+                                                .iter()
+                                                .map(|(k, v)| {
+                                                    (
+                                                        k.clone(),
+                                                        RefCell::new(
+                                                            self.snapshot_binding_expression(
+                                                                &v.borrow(),
+                                                            ),
+                                                        ),
+                                                    )
+                                                })
+                                                .collect(),
+                                        },
+                                    )
+                                }
+                                expression_tree::PathItemOrRepeater::Repeated(rep) => {
+                                    expression_tree::PathItemOrRepeater::Repeated(
+                                        expression_tree::RepeatedPathItem {
+                                            model: Box::new(
+                                                self.snapshot_expression(&rep.model),
+                                            ),
+                                            model_data_id: rep.model_data_id.clone(),
+                                            index_id: rep.index_id.clone(),
+                                            is_conditional: rep.is_conditional,
+                                            element_type: rep.element_type.clone(),
+                                            bindings: rep
+                                                .bindings
+                                                .iter()
+                                                .map(|(k, v)| {
+                                                    (k.clone(), self.snapshot_expression(v))
+                                                })
+                                                .collect(),
+                                        },
+                                    )
+                                }
+                            })
+                            .collect(),
+                    )
+                }
             }),
             Expression::LinearGradient { angle, stops } => Expression::LinearGradient {
                 angle: Box::new(self.snapshot_expression(angle)),

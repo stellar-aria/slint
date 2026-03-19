@@ -91,18 +91,88 @@ pub fn compile_paths(
             let new_children = Vec::with_capacity(elem.children.len());
             let old_children = std::mem::replace(&mut elem.children, new_children);
 
-            let mut path_data = Vec::new();
+            // Mixed static/dynamic path items. `has_dynamic` tracks whether any `for`/`if`
+            // children were encountered; if so we emit `Path::ItemList` instead of
+            // `Path::Elements` so that code generators can handle them dynamically.
+            let mut path_items: Vec<crate::expression_tree::PathItemOrRepeater> = Vec::new();
+            let mut has_dynamic = false;
 
             for child in old_children {
                 let element_name =
                     &child.borrow().base_type.as_builtin().native_class.class_name.clone();
 
                 if let Some(element_type) = element_types.get(element_name).cloned() {
-                    if child.borrow().repeated.is_some() {
-                        diag.push_error(
-                            "Path elements are not supported with `for`-`in` syntax, yet (https://github.com/slint-ui/slint/issues/754)".into(),
-                            &*child.borrow(),
+                    let repeated = child.borrow().repeated.clone();
+                    if let Some(repeated) = repeated {
+                        has_dynamic = true;
+
+                        // Determine the type of the model data variable.
+                        let model_data_type = if repeated.is_conditional_element {
+                            // For `if cond:`, model is a bool. No model data variable.
+                            Type::Void
+                        } else {
+                            match repeated.model.ty() {
+                                Type::Array(inner) => (*inner).clone(),
+                                _ => Type::Void,
+                            }
+                        };
+
+                        // Extract and substitute bindings.
+                        let mut bindings: std::collections::BTreeMap<SmolStr, Expression> =
+                            std::collections::BTreeMap::new();
+                        let child_weak = Rc::downgrade(&child);
+                        {
+                            let mut child_mut = child.borrow_mut();
+                            for k in element_type.properties.keys() {
+                                if let Some(binding) = child_mut.bindings.remove(k) {
+                                    let mut expr = binding.into_inner().expression;
+                                    // Replace RepeaterModelReference / RepeaterIndexReference
+                                    // that point to this child with ReadLocalVariable nodes.
+                                    expr.visit_recursive_mut(&mut |e| {
+                                        let replace_with = match e {
+                                            Expression::RepeaterModelReference { element }
+                                                if std::rc::Weak::ptr_eq(element, &child_weak) =>
+                                            {
+                                                Some(Expression::ReadLocalVariable {
+                                                    name: repeated.model_data_id.clone(),
+                                                    ty: model_data_type.clone(),
+                                                })
+                                            }
+                                            Expression::RepeaterIndexReference { element }
+                                                if std::rc::Weak::ptr_eq(element, &child_weak) =>
+                                            {
+                                                Some(Expression::ReadLocalVariable {
+                                                    name: repeated.index_id.clone(),
+                                                    ty: Type::Int32,
+                                                })
+                                            }
+                                            _ => None,
+                                        };
+                                        if let Some(replacement) = replace_with {
+                                            *e = replacement;
+                                        }
+                                    });
+                                    bindings.insert(k.clone(), expr);
+                                }
+                            }
+                        }
+
+                        path_items.push(
+                            crate::expression_tree::PathItemOrRepeater::Repeated(
+                                crate::expression_tree::RepeatedPathItem {
+                                    model: Box::new(repeated.model),
+                                    model_data_id: repeated.model_data_id,
+                                    index_id: repeated.index_id,
+                                    is_conditional: repeated.is_conditional_element,
+                                    element_type,
+                                    bindings,
+                                },
+                            ),
                         );
+                        // Clear the `repeated` field so move_declarations.rs doesn't
+                        // treat this consumed child as a pending repeater element.
+                        child.borrow_mut().repeated = None;
+                        enclosing_component.optimized_elements.borrow_mut().push(child);
                     } else {
                         let mut bindings = std::collections::BTreeMap::new();
                         {
@@ -113,7 +183,9 @@ pub fn compile_paths(
                                 }
                             }
                         }
-                        path_data.push(PathElement { element_type, bindings });
+                        path_items.push(crate::expression_tree::PathItemOrRepeater::Static(
+                            PathElement { element_type, bindings },
+                        ));
                         enclosing_component.optimized_elements.borrow_mut().push(child);
                     }
                 } else {
@@ -122,8 +194,8 @@ pub fn compile_paths(
             }
 
             if elem.is_binding_set("elements", false) {
-                if path_data.is_empty() {
-                    // Just Path subclass that had elements declared earlier, since path_data is empty we should retain the
+                if path_items.is_empty() {
+                    // Just Path subclass that had elements declared earlier, since path_items is empty we should retain the
                     // existing elements
                     return;
                 } else {
@@ -136,7 +208,19 @@ pub fn compile_paths(
                 }
             }
 
-            Expression::PathData(crate::expression_tree::Path::Elements(path_data)).into()
+            if has_dynamic {
+                Expression::PathData(crate::expression_tree::Path::ItemList(path_items)).into()
+            } else {
+                // Pure static path — extract PathElement vec from the Static wrappers for backward compat.
+                let elements = path_items
+                    .into_iter()
+                    .map(|item| match item {
+                        crate::expression_tree::PathItemOrRepeater::Static(e) => e,
+                        crate::expression_tree::PathItemOrRepeater::Repeated(_) => unreachable!(),
+                    })
+                    .collect();
+                Expression::PathData(crate::expression_tree::Path::Elements(elements)).into()
+            }
         };
 
         elem_

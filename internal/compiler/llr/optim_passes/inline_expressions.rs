@@ -72,6 +72,7 @@ fn expression_cost(exp: &Expression, ctx: &EvaluationContext) -> isize {
         Expression::WithLayoutItemInfo { .. } => return isize::MAX,
         Expression::WithFlexBoxLayoutItemInfo { .. } => return isize::MAX,
         Expression::WithGridInputData { .. } => return isize::MAX,
+        Expression::WithPathData { .. } => return isize::MAX,
         Expression::MinMax { .. } => 10,
         Expression::EmptyComponentFactory => 10,
         Expression::TranslationReference { .. } => PROPERTY_ACCESS_COST + 2 * ALLOC_COST,

@@ -3998,6 +3998,94 @@ fn compile_expression(expr: &llr::Expression, ctx: &EvaluationContext) -> String
                 )
             })
         }
+        Expression::WithPathData { elements } => {
+            // Helper: given a struct expression for a path element, emit a
+            //   slint::private_api::PathElement::LineTo(...) initialiser string.
+            let path_element_str =
+                |expr: &Expression,
+                 ctx: &EvaluationContext<'_>|
+                 -> String {
+                    match expr.ty(ctx) {
+                        crate::langtype::Type::Struct(s)
+                            if s.name.is_some() =>
+                        {
+                            let qualified = s.name.cpp_type().unwrap();
+                            // e.g. "slint::private_api::PathLineTo" → "LineTo"
+                            let elem_type_name = qualified
+                                .split("::")
+                                .last()
+                                .unwrap()
+                                .strip_prefix("Path")
+                                .unwrap_or(qualified.split("::").last().unwrap());
+                            let init = if s.fields.is_empty() {
+                                String::new()
+                            } else {
+                                compile_expression(expr, ctx)
+                            };
+                            format!(
+                                "slint::private_api::PathElement::{elem_type_name}({init})"
+                            )
+                        }
+                        _ => compile_expression(expr, ctx),
+                    }
+                };
+
+            let stmts: Vec<String> = elements
+                .iter()
+                .map(|elem| match elem {
+                    llr::PathDataElement::Static(expr) => {
+                        let e = path_element_str(expr, ctx);
+                        format!("__path_elems.push_back({e});")
+                    }
+                    llr::PathDataElement::Dynamic(dyn_item) => {
+                        let elem_e =
+                            path_element_str(&dyn_item.element_expr, ctx);
+                        if dyn_item.is_conditional {
+                            let cond = compile_expression(&dyn_item.model, ctx);
+                            format!(
+                                "if ({cond}) {{ __path_elems.push_back({elem_e}); }}"
+                            )
+                        } else {
+                            let model = compile_expression(&dyn_item.model, ctx);
+                            let data_cpp_ty = dyn_item.element_expr.ty(ctx);
+                            // model data type — extract from model's Type::Array
+                            let data_ty_str = match dyn_item.model.ty(ctx) {
+                                crate::langtype::Type::Array(inner) => {
+                                    inner.cpp_type().unwrap_or_default()
+                                }
+                                _ => "auto".into(),
+                            };
+                            let _ = data_cpp_ty;
+                            let data_var = &dyn_item.data_var;
+                            let index_intro = if !dyn_item.index_var.is_empty() {
+                                let iv = &dyn_item.index_var;
+                                format!(
+                                    "[[maybe_unused]] int {iv} = static_cast<int>(__path_idx++);"
+                                )
+                            } else {
+                                String::new()
+                            };
+                            let idx_decl = if !dyn_item.index_var.is_empty() {
+                                "size_t __path_idx = 0;"
+                            } else {
+                                ""
+                            };
+                            format!(
+                                "{{ {idx_decl} for ({data_ty_str} const& {data_var} : *({model})) {{ {index_intro} __path_elems.push_back({elem_e}); }} }}"
+                            )
+                        }
+                    }
+                })
+                .collect();
+            let body = stmts.join(" ");
+            format!(
+                r#"[&](){{
+                    std::vector<slint::private_api::PathElement> __path_elems;
+                    {body}
+                    return slint::private_api::PathData(__path_elems.data(), __path_elems.size());
+                }}()"#
+            )
+        }
         Expression::WithLayoutItemInfo {
             cells_variable,
             repeater_indices_var_name,

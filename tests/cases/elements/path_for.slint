@@ -1,0 +1,25 @@
+// Copyright © SixtyFPS GmbH <info@slint.dev>
+// SPDX-License-Identifier: GPL-3.0-only OR LicenseRef-Slint-Royalty-free-2.0 OR LicenseRef-Slint-Software-3.0
+
+export component TestCase {
+    in property<[float]> points: [10, 20, 30];
+    in property<bool> show-extra: false;
+
+    Path {
+        MoveTo { x: 0; y: 0; }
+        for pt[i] in root.points : LineTo {
+            x: pt;
+            y: i;
+        }
+        if root.show-extra : LineTo { x: 99; y: 99; }
+        Close {}
+    }
+}
+
+/*
+```rust
+let instance = TestCase::new().unwrap();
+// Just verify the component compiles and runs without panic.
+let _ = instance;
+```
+*/

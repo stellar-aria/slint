@@ -2236,6 +2236,56 @@ pub fn convert_path(path: &ExprPath, local_context: &mut EvalLocalContext) -> Pa
                 panic!("binding to path commands does not evaluate to string");
             }
         }
+        ExprPath::ItemList(items) => {
+            let mut result = SharedVector::<PathElement>::default();
+            for item in items {
+                match item {
+                    i_slint_compiler::expression_tree::PathItemOrRepeater::Static(elem) => {
+                        result.push(convert_path_element(elem, local_context));
+                    }
+                    i_slint_compiler::expression_tree::PathItemOrRepeater::Repeated(rep) => {
+                        if rep.is_conditional {
+                            let Value::Bool(cond) = eval_expression(&rep.model, local_context)
+                            else {
+                                panic!("conditional path element model did not evaluate to bool")
+                            };
+                            if cond {
+                                result.push(convert_repeated_path_element(rep, local_context));
+                            }
+                        } else {
+                            let model_val = eval_expression(&rep.model, local_context);
+                            let model: ModelRc<Value> = if let Value::Model(m) = model_val {
+                                m
+                            } else {
+                                ModelRc::new(crate::value_model::ValueModel::new(model_val))
+                            };
+                            for (i, row_val) in model.iter().enumerate() {
+                                if !rep.model_data_id.is_empty() {
+                                    local_context
+                                        .local_variables
+                                        .insert(rep.model_data_id.clone(), row_val);
+                                }
+                                if !rep.index_id.is_empty() {
+                                    local_context.local_variables.insert(
+                                        rep.index_id.clone(),
+                                        Value::Number(i as f64),
+                                    );
+                                }
+                                result
+                                    .push(convert_repeated_path_element(rep, local_context));
+                            }
+                            if !rep.model_data_id.is_empty() {
+                                local_context.local_variables.remove(&rep.model_data_id);
+                            }
+                            if !rep.index_id.is_empty() {
+                                local_context.local_variables.remove(&rep.index_id);
+                            }
+                        }
+                    }
+                }
+            }
+            PathData::Elements(result)
+        }
     }
 }
 
@@ -2265,6 +2315,69 @@ fn convert_path_element(
             "Cannot create unsupported path element {}",
             expr_element.element_type.native_class.class_name
         ),
+    }
+}
+
+/// Build a `PathElement` for a `RepeatedPathItem` whose `model_data_id` / `index_id`
+/// local variables have already been inserted into `local_context`.
+fn convert_repeated_path_element(
+    rep: &i_slint_compiler::expression_tree::RepeatedPathItem,
+    local_context: &mut EvalLocalContext,
+) -> PathElement {
+    let class_name = rep.element_type.native_class.class_name.as_str();
+    match class_name {
+        "MoveTo" => {
+            let mut elem = corelib::graphics::PathMoveTo::default();
+            for (prop, info) in <corelib::graphics::PathMoveTo as corelib::rtti::BuiltinItem>::fields::<Value>() {
+                if let Some(expr) = rep.bindings.get(prop) {
+                    let v = eval_expression(expr, local_context);
+                    info.set_field(&mut elem, v).unwrap();
+                }
+            }
+            PathElement::MoveTo(elem)
+        }
+        "LineTo" => {
+            let mut elem = corelib::graphics::PathLineTo::default();
+            for (prop, info) in <corelib::graphics::PathLineTo as corelib::rtti::BuiltinItem>::fields::<Value>() {
+                if let Some(expr) = rep.bindings.get(prop) {
+                    let v = eval_expression(expr, local_context);
+                    info.set_field(&mut elem, v).unwrap();
+                }
+            }
+            PathElement::LineTo(elem)
+        }
+        "ArcTo" => {
+            let mut elem = corelib::graphics::PathArcTo::default();
+            for (prop, info) in <corelib::graphics::PathArcTo as corelib::rtti::BuiltinItem>::fields::<Value>() {
+                if let Some(expr) = rep.bindings.get(prop) {
+                    let v = eval_expression(expr, local_context);
+                    info.set_field(&mut elem, v).unwrap();
+                }
+            }
+            PathElement::ArcTo(elem)
+        }
+        "CubicTo" => {
+            let mut elem = corelib::graphics::PathCubicTo::default();
+            for (prop, info) in <corelib::graphics::PathCubicTo as corelib::rtti::BuiltinItem>::fields::<Value>() {
+                if let Some(expr) = rep.bindings.get(prop) {
+                    let v = eval_expression(expr, local_context);
+                    info.set_field(&mut elem, v).unwrap();
+                }
+            }
+            PathElement::CubicTo(elem)
+        }
+        "QuadraticTo" => {
+            let mut elem = corelib::graphics::PathQuadraticTo::default();
+            for (prop, info) in <corelib::graphics::PathQuadraticTo as corelib::rtti::BuiltinItem>::fields::<Value>() {
+                if let Some(expr) = rep.bindings.get(prop) {
+                    let v = eval_expression(expr, local_context);
+                    info.set_field(&mut elem, v).unwrap();
+                }
+            }
+            PathElement::QuadraticTo(elem)
+        }
+        "Close" => PathElement::Close,
+        _ => panic!("Cannot create unsupported path element {class_name}"),
     }
 }
 

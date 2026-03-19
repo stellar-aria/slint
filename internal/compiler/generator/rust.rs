@@ -3030,6 +3030,59 @@ fn compile_expression(expr: &Expression, ctx: &EvaluationContext) -> TokenStream
                 *cache.get(data_idx).unwrap_or(&(0 as _))
             })
         }),
+        Expression::WithPathData { elements } => {
+            let stmts = elements.iter().map(|elem| match elem {
+                llr::PathDataElement::Static(expr) => {
+                    let e = if matches!(expr.as_ref(), Expression::Struct { ty, .. } if ty.fields.is_empty())
+                    {
+                        quote!(sp::PathElement::Close)
+                    } else {
+                        let compiled = compile_expression(expr, ctx);
+                        quote!((#compiled).into())
+                    };
+                    quote!({ __path_elems.push(#e); })
+                }
+                llr::PathDataElement::Dynamic(dyn_item) => {
+                    let model = compile_expression(&dyn_item.model, ctx);
+                    let elem_expr =
+                        if matches!(dyn_item.element_expr.as_ref(), Expression::Struct { ty, .. } if ty.fields.is_empty())
+                        {
+                            quote!(sp::PathElement::Close)
+                        } else {
+                            let compiled = compile_expression(&dyn_item.element_expr, ctx);
+                            quote!((#compiled).into())
+                        };
+                    if dyn_item.is_conditional {
+                        quote! {
+                            if #model {
+                                __path_elems.push(#elem_expr);
+                            }
+                        }
+                    } else {
+                        let data_var = ident(&dyn_item.data_var);
+                        let loop_header = if dyn_item.index_var.is_empty() {
+                            let mv = compile_expression(&dyn_item.model, ctx);
+                            quote!(for #data_var in (#mv).iter())
+                        } else {
+                            let index_var = ident(&dyn_item.index_var);
+                            quote!(for (#index_var, #data_var) in (#model).iter().enumerate().map(|(i, v)| (i as i32, v)))
+                        };
+                        quote! {
+                            #loop_header {
+                                __path_elems.push(#elem_expr);
+                            }
+                        }
+                    }
+                }
+            });
+            quote! {
+                {
+                    let mut __path_elems = sp::Vec::<sp::PathElement>::new();
+                    #(#stmts)*
+                    sp::PathData::Elements(sp::SharedVector::<_>::from_slice(&__path_elems))
+                }
+            }
+        }
         Expression::WithLayoutItemInfo {
             cells_variable,
             repeater_indices_var_name,

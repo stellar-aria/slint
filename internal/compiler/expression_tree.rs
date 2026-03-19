@@ -1044,6 +1044,21 @@ impl Expression {
                     events.iter().chain(coordinates.iter()).for_each(visitor);
                 }
                 Path::Commands(commands) => visitor(commands),
+                Path::ItemList(items) => {
+                    for item in items {
+                        match item {
+                            PathItemOrRepeater::Static(elem) => {
+                                elem.bindings
+                                    .values()
+                                    .for_each(|binding| visitor(&binding.borrow()))
+                            }
+                            PathItemOrRepeater::Repeated(rep) => {
+                                visitor(&rep.model);
+                                rep.bindings.values().for_each(&mut visitor);
+                            }
+                        }
+                    }
+                }
             },
             Expression::StoreLocalVariable { value, .. } => visitor(value),
             Expression::ReadLocalVariable { .. } => {}
@@ -1164,6 +1179,21 @@ impl Expression {
                     events.iter_mut().chain(coordinates.iter_mut()).for_each(visitor);
                 }
                 Path::Commands(commands) => visitor(commands),
+                Path::ItemList(items) => {
+                    for item in items {
+                        match item {
+                            PathItemOrRepeater::Static(elem) => {
+                                elem.bindings
+                                    .values_mut()
+                                    .for_each(|binding| visitor(&mut binding.borrow_mut()))
+                            }
+                            PathItemOrRepeater::Repeated(rep) => {
+                                visitor(&mut rep.model);
+                                rep.bindings.values_mut().for_each(&mut visitor);
+                            }
+                        }
+                    }
+                }
             },
             Expression::StoreLocalVariable { value, .. } => visitor(value),
             Expression::ReadLocalVariable { .. } => {}
@@ -1283,6 +1313,7 @@ impl Expression {
                     .all(|element| element.bindings.values().all(|v| v.borrow().is_constant(ga))),
                 Path::Events(_, _) => true,
                 Path::Commands(_) => false,
+                Path::ItemList(_) => false,
             },
             Expression::StoreLocalVariable { value, .. } => value.is_constant(ga),
             // We only load what we store, and stores are alredy checked
@@ -1803,12 +1834,45 @@ pub enum Path {
     Elements(Vec<PathElement>),
     Events(Vec<Expression>, Vec<Expression>),
     Commands(Box<Expression>), // expr must evaluate to string
+    /// A list of path items that may include dynamic (for-in / if) entries.
+    /// Used when at least one child of the Path element uses `for` or `if` syntax.
+    ItemList(Vec<PathItemOrRepeater>),
 }
 
 #[derive(Debug, Clone)]
 pub struct PathElement {
     pub element_type: Rc<BuiltinElement>,
     pub bindings: BindingsMap,
+}
+
+/// A path item that is either a static element or a dynamic (for-in / if) element.
+#[derive(Debug, Clone)]
+pub enum PathItemOrRepeater {
+    Static(PathElement),
+    Repeated(RepeatedPathItem),
+}
+
+/// A repeated or conditional path item, corresponding to `for x[i] in model: PathElem { ... }`
+/// or `if cond: PathElem { ... }` inside a `Path`.
+///
+/// Bindings in this struct have already had all `RepeaterModelReference` and
+/// `RepeaterIndexReference` nodes substituted with `ReadLocalVariable` nodes referencing
+/// `model_data_id` and `index_id` respectively.
+#[derive(Debug, Clone)]
+pub struct RepeatedPathItem {
+    /// The model expression. For `if cond:` this is a `Type::Bool` expression.
+    /// For `for x in model:` this is a `Type::Array(...)` expression.
+    pub model: Box<Expression>,
+    /// Name of the loop variable (model data), used in `ReadLocalVariable` nodes in bindings.
+    pub model_data_id: SmolStr,
+    /// Name of the index variable, or empty string when no index is declared.
+    pub index_id: SmolStr,
+    /// Whether this is a conditional element (`if`) rather than a repeating element (`for`).
+    pub is_conditional: bool,
+    pub element_type: Rc<BuiltinElement>,
+    /// Bindings with `RepeaterModelReference`/`RepeaterIndexReference` already replaced by
+    /// `ReadLocalVariable` referring to `model_data_id` / `index_id`.
+    pub bindings: std::collections::BTreeMap<SmolStr, Expression>,
 }
 
 #[derive(Clone, Debug, Default)]
