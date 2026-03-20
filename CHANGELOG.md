@@ -45,6 +45,7 @@ All notable changes to this project are documented in this file.
  - Added `KeyboardModifiers`, `KeyEvent`, and `StandardListViewItem` to the `slint::language` module.
  - Added support for multiple `@rust-attr` per struct or enum.
  - Added `open_url` methd to the `Platform` trait. (#11035)
+ - Added Vello-based GPU renderer (`renderer-vello` feature) backed by WGPU, supporting the winit and Linux KMS/DRM backends.
 
 ### Python
 

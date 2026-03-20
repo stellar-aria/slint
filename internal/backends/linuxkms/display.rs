@@ -9,7 +9,11 @@ pub trait Presenter {
     fn present(&self) -> Result<(), Box<dyn std::error::Error + Send + Sync>>;
 }
 
-#[cfg(any(feature = "renderer-skia-opengl", feature = "renderer-femtovg"))]
+#[cfg(any(
+    feature = "renderer-skia-opengl",
+    feature = "renderer-femtovg",
+    feature = "renderer-vello"
+))]
 pub mod gbmdisplay;
 #[cfg(any(
     feature = "renderer-skia-opengl",

@@ -86,6 +86,9 @@ renderer-femtovg = ["i-slint-backend-selector/renderer-femtovg", "std"]
 ## Render using the [FemtoVG](https://crates.io/crates/femtovg) crate and [WGPU](https://crates.io/crates/wgpu).
 renderer-femtovg-wgpu = ["i-slint-backend-selector/renderer-femtovg-wgpu", "std"]
 
+## Render using the [Vello](https://vello.dev/) crate.
+renderer-vello = ["i-slint-backend-selector/renderer-vello", "std"]
+
 ## Make the winit backend capable of rendering using [Skia](https://skia.org/).
 ## Must be used in combination with `backend-winit`, `backend-winit-x11`, or `backend-winit-wayland`.
 renderer-skia = ["i-slint-backend-selector/renderer-skia", "std"]

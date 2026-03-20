@@ -47,6 +47,7 @@ impl GbmDisplay {
         Ok(GbmDisplay { drm_output, gbm_surface, gbm_device, surface_format })
     }
 
+    #[cfg(any(feature = "renderer-skia-opengl", feature = "renderer-femtovg"))]
     pub fn config_template_builder(&self) -> glutin::config::ConfigTemplateBuilder {
         let mut config_template_builder = glutin::config::ConfigTemplateBuilder::new();
 
@@ -60,6 +61,7 @@ impl GbmDisplay {
         config_template_builder
     }
 
+    #[cfg(any(feature = "renderer-skia-opengl", feature = "renderer-femtovg"))]
     pub fn filter_gl_config(&self, config: &glutin::config::Config) -> bool {
         match &config {
             glutin::config::Config::Egl(egl_config) => {
